@@ -8,6 +8,7 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
 class CommentReadEvent implements ShouldBroadcastNow
 {
@@ -22,6 +23,7 @@ class CommentReadEvent implements ShouldBroadcastNow
 
     public function broadcastOn()
     {
+        Log::info('vao read');
         return new Channel('ticket.' . $this->comment->ticket_id);
     }
 

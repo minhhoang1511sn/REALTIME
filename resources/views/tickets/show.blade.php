@@ -52,6 +52,7 @@
             const userId = document.head.querySelector('meta[name="user-id"]').content;
             const assignedUserId = document.head.querySelector('meta[name="assigned-user-id"]').content;
             const token = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            let alreadyMarkedRead = false;
 
             // Cập nhật lại thời gian các comment bằng dayjs
             document.querySelectorAll('.time-text').forEach(span => {
@@ -60,23 +61,32 @@
             });
 
             // Nếu người dùng là assignedUser, tự động đánh dấu các comment chưa đọc là đã đọc
-            if (parseInt(userId) === parseInt(assignedUserId)) {
-                fetch(`/tickets/${ticketId}/mark-read`, {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': token,
-                        'Content-Type': 'application/json'
-                    }
-                }).then(() => {
-                    // Cập nhật status "Đã đọc" cho tất cả comment chưa đọc khi tải trang
-                    document.querySelectorAll('.status-text').forEach(status => {
-                        if (status.textContent === 'chưa đọc') {
-                            status.textContent = 'Đã đọc';
-                        }
-                    });
-                }).catch(console.error);
-            }
+            function checkAndMarkRead() {
+                if (alreadyMarkedRead) return;
 
+                const firstUnread = document.querySelector('.comment-item[data-is-read="0"]'); // comment chưa đọc
+                console.log('firstUnread' + firstUnread)
+                if (firstUnread && isElementInViewport(firstUnread)) {
+                    alreadyMarkedRead = true;
+                    console.log('vao fetch')
+                    console.log(ticketId)
+
+                    fetch(`/tickets/${ticketId}/mark-read`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': token,
+                            'Content-Type': 'application/json'
+                        }
+                    }).then(() => {
+                        // Cập nhật status "Đã đọc" cho tất cả comment chưa đọc khi tải trang
+                        document.querySelectorAll('.status-text').forEach(status => {
+                            if (status.textContent === 'chưa đọc') {
+                                status.textContent = 'Đã đọc';
+                            }
+                        });
+                    }).catch(console.error);
+                }
+            }
             if (window.Echo) {
                 window.Echo.channel(`ticket.${ticketId}`)
                     // Khi có comment được tạo mới
@@ -88,8 +98,14 @@
                             const userName = comment.user?.name || 'Unknown';
 
                             const li = document.createElement('li');
-                            li.className = 'list-group-item';
+                            li.className =
+                                'list-group-item comment-item flash-unread'; // thêm class dễ xử lý + hiệu ứng
                             li.setAttribute('data-comment-id', comment.id);
+                            li.setAttribute('data-is-read', '0');
+                            li.setAttribute('id', `comment-${comment.id}`);
+
+                            const contentText = document.createElement('span');
+                            contentText.innerHTML = `<strong>${userName}</strong>: ${comment.content}`;
 
                             const statusSpan = document.createElement('span');
                             statusSpan.className = 'text-muted float-end ms-2 status-text';
@@ -100,37 +116,60 @@
                             timeSpan.setAttribute('data-time', comment.created_at);
                             timeSpan.textContent = dayjs(comment.created_at).fromNow();
 
-                            li.innerHTML = `<strong>${userName}</strong>: ${comment.content}`;
+                            li.appendChild(contentText);
                             li.appendChild(statusSpan);
                             li.appendChild(timeSpan);
                             container.appendChild(li);
+
+                            // Optional: auto scroll tới comment mới
+                            li.scrollIntoView({
+                                behavior: 'smooth',
+                                block: 'center'
+                            });
                         }
-                    })
 
-                    // Khi có comment được đánh dấu là đã đọc
-                    .listen('.comment.read', (e) => {
-                        const comment = e.comment;
-                        const item = document.querySelector(`[data-comment-id="${comment.id}"]`);
-
-                        if (item) {
-                            const statusSpan = item.querySelector('.status-text');
-
-                            // Cập nhật trạng thái comment là đã đọc
-                            if (comment.is_read) {
-                                statusSpan.textContent = 'Đã đọc';
-                            } else {
-                                statusSpan.textContent = 'chưa đọc';
-                            }
-
-                            // Cập nhật lại thời gian bình luận
-                            const timeSpan = item.querySelector('.time-text');
-                            if (timeSpan) {
-                                timeSpan.textContent = dayjs(comment.created_at).fromNow();
-                            }
-                        }
                     });
+
+                // Khi có comment được đánh dấu là đã đọc
+                window.Echo.channel(`ticket.${ticketId}`).listen('.comment.read', (e) => {
+                    console.log('vao event doc1')
+                    const comment = e.comment;
+                    const item = document.querySelector(`[data-comment-id="${comment.id}"]`);
+                    console.log('vao event doc')
+
+                    if (item) {
+                        const statusSpan = item.querySelector('.status-text');
+
+                        // Cập nhật trạng thái comment là đã đọc
+                        if (comment.is_read) {
+                            statusSpan.textContent = 'Đã đọc';
+                        } else {
+                            statusSpan.textContent = 'chưa đọc';
+                        }
+
+                        // Cập nhật lại thời gian bình luận
+                        const timeSpan = item.querySelector('.time-text');
+                        if (timeSpan) {
+                            timeSpan.textContent = dayjs(comment.created_at).fromNow();
+                        }
+                    }
+                    checkAndMarkRead();
+                });
             }
+            window.addEventListener('scroll', checkAndMarkRead);
+            window.addEventListener('resize', checkAndMarkRead);
+            checkAndMarkRead();
         });
+
+        function isElementInViewport(el) {
+            const rect = el.getBoundingClientRect();
+            return (
+                rect.top >= 0 &&
+                rect.left >= 0 &&
+                rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+                rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+            );
+        }
     </script>
 
 
